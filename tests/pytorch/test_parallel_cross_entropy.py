@@ -26,11 +26,17 @@ class TestParallelCrossEntropy:
         swap_dim: bool,
         ignore_idx: bool,
         device: torch.device = "cuda",
+        shape: tuple | None = None,
     ):
-        SQ = random.choice([64, 128])
-        batch = random.choice([1, 2])
-        vocab = random.choice([64000, 128000])
-        ignore = random.sample(range(0, SQ - 1), 5)
+        if shape is None:
+            batch = random.choice([1, 2])
+            SQ = random.choice([64, 128])
+            vocab = random.choice([64000, 128000])
+        else:
+            batch, SQ, vocab = shape
+
+        ignore_len = min(5, max(SQ - 1, 0))
+        ignore = random.sample(range(0, SQ - 1), ignore_len) if ignore_len else []
 
         # Generate random data
         if swap_dim:
@@ -63,10 +69,11 @@ class TestParallelCrossEntropy:
         label_smoothing: float,
         reduce_loss: bool,
         ignore_idx: bool = False,
+        shape: tuple | None = None,
     ):
 
         # Random data
-        self.generate_input(dtype, swap_dim, ignore_idx)
+        self.generate_input(dtype, swap_dim, ignore_idx, shape=shape)
 
         # Forward pass
         test_loss = self.test_loss_func(
@@ -89,7 +96,7 @@ class TestParallelCrossEntropy:
         # Check that loss and grad input match
         tols = dtype_tols(dtype)
         test_loss = test_loss.to(dtype=torch.float64, device="cpu")
-        ref_loss = test_loss.to(dtype=torch.float64, device="cpu")
+        ref_loss = ref_loss.to(dtype=torch.float64, device="cpu")
         ref_loss = ref_loss.reshape(test_loss.size())
         test_grad_input = self.input_test.grad.to(dtype=torch.float64, device="cpu")
         ref_grad_input = self.input_ref.grad.to(dtype=torch.float64, device="cpu")
@@ -154,3 +161,49 @@ class TestParallelCrossEntropy:
                 reduce_loss=False,
                 ignore_idx=True,
             )
+
+    def test_ignore_idx_reduced_loss_small_shapes(self):
+        """Exercise ignore_idx path with reduced loss using main iteration helper."""
+        torch.manual_seed(1234)
+        self.generate_infra(True, 0)
+        shapes = [(64, 32, 64)]
+        for swap_dim in [False, True]:
+            for shape in shapes:
+                self.one_iteration_test(
+                    dtype=torch.float32,
+                    swap_dim=False,
+                    label_smoothing=0,
+                    reduce_loss=True,
+                    ignore_idx=True,
+                    shape=shape,
+                )
+    def test_ignore_idx_reduced_loss_small_shapes_thin(self):
+        """Exercise ignore_idx path with reduced loss using main iteration helper."""
+        torch.manual_seed(1234)
+        self.generate_infra(True, 0)
+        shapes = [(1, 8, 64)]
+        for swap_dim in [False, True]:
+            for shape in shapes:
+                self.one_iteration_test(
+                    dtype=torch.float32,
+                    swap_dim=False,
+                    label_smoothing=0,
+                    reduce_loss=True,
+                    ignore_idx=True,
+                    shape=shape,
+                )
+    def test_ignore_idx_reduced_loss_small_shapes_false(self):
+        """Exercise ignore_idx path with reduced loss using main iteration helper."""
+        torch.manual_seed(1234)
+        self.generate_infra(True, 0)
+        shapes = [(64, 32, 64)]
+        for swap_dim in [False, True]:
+            for shape in shapes:
+                self.one_iteration_test(
+                    dtype=torch.float32,
+                    swap_dim=swap_dim,
+                    label_smoothing=0,
+                    reduce_loss=True,
+                    ignore_idx=False,
+                    shape=shape,
+                )
